@@ -1,0 +1,58 @@
+#!/usr/bin/env python
+
+import pyaudio
+import socket
+import select
+
+FORMAT = pyaudio.paInt16
+CHANNELS = 1
+RATE = 8000
+CHUNK = 512
+
+audio = pyaudio.PyAudio()
+
+serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+serversocket.bind(('192.168.0.100', 4445))
+serversocket.listen(5) #Max number of accepted connexions
+
+
+def callback(in_data, frame_count, time_info, status):
+    #serversocket.send(in_data)
+    for s in read_list[1:]:
+        s.send(in_data)
+    return (None, pyaudio.paContinue)
+
+
+# start Recording
+stream = audio.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK, stream_callback=callback)
+# stream.start_stream()
+
+read_list = [serversocket]
+print("recording...")
+
+try:
+    while True:
+        readable, writable, errored = select.select(read_list, [], [])
+        for s in readable:
+            if s is serversocket:
+                (clientsocket, address) = serversocket.accept()
+                read_list.append(clientsocket)
+                print("Connection from ", address)
+            else:
+                try:
+                    data = s.recv(1024)
+                except Exception:#ConnectionResetError:
+                    print("Connection lost.\nWaiting for connection.")
+                    read_list.remove(s)
+                    continue
+except KeyboardInterrupt:
+    pass
+
+
+print("finished recording")
+
+serversocket.close()
+# stop Recording
+stream.stop_stream()
+stream.close()
+audio.terminate()
